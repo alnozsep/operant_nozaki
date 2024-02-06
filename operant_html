@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style src ="Style.css"></style>
+    <script src="BLE_com.js"></script>
+    <title>BLE Data Receiver</title>
+</head>
+<body>
+    <h1>BLE Data Receiver</h1>
+     <canvas id="graphCanvas" width="800" height="300" style="border:1px solid #000; margin-top:20px;"></canvas>
+    <label for="valueSelect">Select a schedule:</label>
+    <select id="valueSelect">
+    <option value="1">FR</option>
+    <option value="2">VR</option>
+    <option value="3">FI</option>
+    <option value="4">VI</option>
+    </select>
+   <form id="numberForm">
+    <label for="numberInput">Enter ratio:</label>
+    <input type="number" id="numberInput" required>
+    </form>
+    <form id="numberForm2">
+    <label for="numberInput2">Enter delaytime:</label>
+    <input type="number" id="numberInput2" required>
+    </form>
+    <button onclick="connect()">Connect to BLE Device</button>
+    <button onclick="disconnect()">DISConnect to BLE Device</button>    
+    <button onclick="sendValues()">Send Selected Value to ESP32</button>
+  
+    <button id="createCSVButton" onclick="createCSVFile()">Create CSV</button>
+    
+    
+   </body>
+</html>
+
