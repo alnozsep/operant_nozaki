@@ -1,0 +1,172 @@
+let characteristic;
+let csvData = '';
+let lickvalue = 0; // 初期値は適宜変更してください
+let prevLickvalue = 0;
+let licknumber = 0;
+
+async function connect() {
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [{ services: ['3adf06f8-193d-4590-931e-43c7859ea3f8'] }],
+        });
+
+        const server = await device.gatt.connect();
+        characteristic = await server.getPrimaryService('3adf06f8-193d-4590-931e-43c7859ea3f8')
+            .then(service => service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26a8'));
+
+        // Subscribe to notifications
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', handleNotifications);
+
+        console.log('Connected to the BLE device');
+    } catch (error) {
+        console.error('Error connecting to the BLE device', error);
+    }
+}
+
+async function disconnect() {
+    try {
+        // Unsubscribe from notifications
+        await characteristic.stopNotifications();
+        characteristic.removeEventListener('characteristicvaluechanged', handleNotifications);
+
+        // Disconnect from the BLE device
+        await characteristic.service.device.gatt.disconnect();
+
+        console.log('Disconnected from the BLE device');
+    } catch (error) {
+        console.error('Error disconnecting from the BLE device', error);
+    }
+}
+
+function handleNotifications(event) {
+    const value = event.target.value;
+    const stringValue = new TextDecoder().decode(value);
+    const currentTime = new Date().toLocaleString();
+    console.log('Received notification:', stringValue);
+    // Assuming the received values are comma-separated
+    const [receivedValue1, receivedValue2, receivedValue3,receivedValue4,receivedValue5,receivedValue6,receivedValue7] = stringValue.split(',');
+          if (receivedValue5 < 30) {
+            lickvalue = 1;
+          } else {
+            lickvalue = 0;
+          }
+          if (lickvalue == 1 && prevLickvalue == 0) {
+            licknumber = 1;
+            prevLickvalue = lickvalue;
+          } else {
+            licknumber = 0;
+            prevLickvalue = lickvalue;
+          }
+     
+    console.log('licknumber:', licknumber);
+    sensorMonitor.graphDraw(licknumber);
+    // Append data to CSV string
+    csvData += `${currentTime},${receivedValue1},${receivedValue2},${receivedValue3}\n`;
+    console.log('CSV Data:', csvData);
+}
+
+function createCSVFile() {
+    // Create CSV file with the accumulated data
+    const blob = new Blob([csvData], { type: 'text/csv' });
+
+    // Create a download link
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'data.csv';
+
+    // Append the download link to the document
+    document.body.appendChild(a);
+    
+    // Trigger a click event to simulate user interaction
+    a.click();
+
+    // Remove the download link from the document
+    document.body.removeChild(a);
+
+    // Clear the CSV data after creating the file
+    csvData = '';
+    console.log('CSV File Created');
+}
+
+
+// Assuming the form has an id of 'numberForm' and the input has an id of 'numberInput'
+function sendValues() {
+    const selectedValue1 = document.getElementById('valueSelect').value;
+    const selectedValue2 = document.getElementById('numberInput').value;
+    const selectedValue3 = document.getElementById('numberInput2').value;
+
+    // Combine both values into a formatted string
+    const combinedValues = `${selectedValue1},${selectedValue2},${selectedValue3}`;
+
+    // Encode the combined string and send it to the ESP32
+    const encodedValues = new TextEncoder().encode(combinedValues);
+    characteristic.writeValue(encodedValues);
+
+    console.log(`Sent values to ESP32: ${combinedValues}`);
+}
+
+class SensorValueMonitor {
+    constructor(title, xPosition, yPosition, xLength, yLength) {
+        this.TITLE = title;
+        this.X_POS = xPosition;
+        this.Y_POS = yPosition;
+        this.X_LENGTH = xLength;
+        this.Y_LENGTH = yLength;
+        this.y1 = new Array(xLength).fill(0);
+    }
+
+    graphDraw(data) {
+        this.y1[this.X_LENGTH - 1] = data;
+
+        for (let i = 0; i < this.X_LENGTH - 1; i++) {
+            this.y1[i] = this.y1[i + 1];
+        }
+
+        const maxRange = 1; // Assuming sensor value range is 0 to 1
+
+        const canvas = document.getElementById('graphCanvas');
+        const ctx = canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.translate(this.X_POS, this.Y_POS);
+        ctx.fillStyle = '#F0F0F0';
+        ctx.strokeStyle = '#828282';
+        ctx.lineWidth = 1;
+        ctx.fillRect(0, 0, this.X_LENGTH, this.Y_LENGTH / 2);
+        ctx.beginPath();
+        ctx.moveTo(0, this.Y_LENGTH / 2);
+        ctx.lineTo(this.X_LENGTH, this.Y_LENGTH / 2);
+        ctx.stroke();
+
+        ctx.font = '25px Arial';
+        ctx.fillStyle = '#3C3C3C';
+        ctx.textAlign = 'left';
+        ctx.fillText(this.TITLE, 20, -5);
+
+        ctx.font = '22px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText('0', -5, this.Y_LENGTH / 2 + 7);
+        ctx.fillText(maxRange.toFixed(1), -5, 18);
+
+        ctx.translate(0, this.Y_LENGTH / 2);
+        ctx.scale(1, -1);
+        ctx.lineWidth = 1;
+
+        for (let i = 0; i < this.X_LENGTH - 1; i++) {
+            ctx.strokeStyle = '#FF0000';
+            ctx.beginPath();
+            ctx.moveTo(i, this.y1[i] * (this.Y_LENGTH / 2) / maxRange);
+            ctx.lineTo(i + 1, this.y1[i + 1] * (this.Y_LENGTH / 2) / maxRange);
+            ctx.stroke();
+        }
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset the transformation
+    }
+}
+    const sensorMonitor = new SensorValueMonitor('Sensor Graph', 50, 50, 300, 300);
+
+
+
+// Add event listeners to HTML elements after the DOM is loaded
