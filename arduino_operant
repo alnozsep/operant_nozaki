@@ -1,0 +1,230 @@
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
+const int ledPin = 13;
+const int VOL_PIN = T6;
+const int Xpin = 0;
+const int Ypin = 4;
+const int debounceDuration = 50;  // デバウンスの期間 (ミリ秒)
+unsigned long lickChangeTime = 0;
+int lickvalue = 0; // 初期値は適宜変更してください
+int prevLickvalue = 0;
+int licknumber = 0;
+int value1, value2, value3;
+
+float pos;
+int buttonState = 0;
+bool lastButtonState = HIGH;
+bool aboveThreshold;
+int buttonCounter = 0;
+int FRn;
+int schedule = 0;
+int touch;
+long x_j;
+long y_j;
+long x_base;
+long y_base;
+int threshold = 100;
+
+long sensesum =0;
+long sensesum2 =0;
+unsigned long time_now = 0;
+unsigned long time_now1 = 0;
+unsigned long time_now2 = 0;
+unsigned long time_now3 = 0;
+unsigned long time_now4 = 0;
+unsigned long time_now5 = 0;
+const unsigned long interval = 1000;
+unsigned long delayTime = 10000;
+unsigned long RdelayTime = 10000;
+unsigned long lastButtonPress;
+
+bool processing = false;
+bool crossedThreshold = false; 
+bool first = true;
+bool first1 =true;
+
+BLEServer* pServer = NULL;
+BLECharacteristic* pCharacteristic = NULL;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
+// See the following for generating UUIDs:
+// https://www.uuidgenerator.net/
+
+#define SERVICE_UUID        "3adf06f8-193d-4590-931e-43c7859ea3f8"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+
+
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+    }
+};
+void led_on(){
+   processing = true;
+   digitalWrite(ledPin, HIGH);
+   time_now1 = millis();
+   while (millis() < time_now1 + 1000){}
+   digitalWrite(ledPin, LOW);
+   processing = false;
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(ledPin, OUTPUT);
+  pinMode(Xpin, INPUT);
+  pinMode(Ypin, INPUT);
+  x_base = analogRead(Xpin);
+  y_base = analogRead(Ypin);
+
+  // Create the BLE Device
+  BLEDevice::init("ESP32");
+
+  // Create the BLE Server
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create the BLE Service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Create a BLE Characteristic
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ   |
+                      BLECharacteristic::PROPERTY_WRITE  |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+
+  // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.descriptor.gatt.client_characteristic_configuration.xml
+  // Create a BLE Descriptor
+  pCharacteristic->addDescriptor(new BLE2902());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
+  BLEDevice::startAdvertising();
+  Serial.println("Waiting a client connection to notify...");
+}
+
+
+void loop() {
+    if (deviceConnected) {
+        std::string value = pCharacteristic->getValue();
+        if (!value.empty()) {
+          sscanf(value.c_str(), "%d,%d,%d" ,&value1, &value2, &value3);
+          schedule = value1;
+          FRn = value2; 
+          int v1 = analogRead(Xpin);
+          int v2 = analogRead(Ypin);
+          x_j = v1 - x_base;
+          y_j = v2 - y_base;
+          pos = sqrt(pow(x_j, 2) + pow(y_j, 2));
+          touch = touchRead(VOL_PIN);
+          delayTime = static_cast<unsigned long>(value3);
+        
+         if (pos > 1000) {
+            lickvalue = 1;
+          } else {
+            lickvalue = 0;
+          }
+          if (lickvalue == 1 && prevLickvalue == 0 && processing == false &&  millis() - lickChangeTime > 50) {
+            licknumber = 1;
+            buttonCounter++;
+            prevLickvalue = lickvalue;
+            lickChangeTime = millis(); 
+          } else {
+            licknumber = 0;
+            buttonCounter += 0;
+            prevLickvalue = lickvalue;
+          }
+      //Serial.println(buttonState);
+      /*
+      if (aboveThreshold && !crossedThreshold) {
+        buttonCounter++;
+        crossedThreshold = true;
+        //Serial.print("ボタンが押された回数: ");
+      }else if (!aboveThreshold) {
+        crossedThreshold = false;
+  }
+  */
+      if (buttonCounter >= FRn  && schedule == 1) {
+      buttonCounter = 0;
+      led_on();
+  }
+
+  if (buttonCounter >= random(FRn-5, FRn+5) && schedule == 2) {
+    buttonCounter = 0;
+    led_on();
+    
+  }
+  if((millis() - lastButtonPress >= delayTime) && schedule == 3){
+    buttonCounter = buttonCounter;
+    first = true;
+    if(buttonCounter >= 2){
+    buttonCounter = 0;
+  }
+  }
+  
+  if((millis() - lastButtonPress >= RdelayTime) && schedule == 4){
+    buttonCounter = buttonCounter;
+    first1 = true;
+    if(buttonCounter >= 2){
+    buttonCounter = 0;
+  }
+  }
+
+  if (buttonCounter >= 1 && schedule==3 && first == true) {
+    buttonCounter ++;
+      led_on();
+      first = false;
+      //Serial.print("経過時間: ");
+      //Serial.println(millis() - lastButtonPress);
+      lastButtonPress = millis();
+      
+  }
+  if (buttonCounter >= 1 && schedule==4 && first1 == true) {
+    buttonCounter ++;
+     led_on();
+     first1 = false;
+      lastButtonPress = millis();
+      
+  }
+
+  if (schedule > 0){
+    String sensorData =String(schedule)+"," + String(value2)+"," + String(delayTime)+"," +String(buttonCounter) +"," +String(touch)+"," +String(x_j)+"," +String(y_j);
+    pCharacteristic->setValue(sensorData.c_str());
+    pCharacteristic->notify();
+  }
+
+  time_now5 = millis();
+  while (millis() < time_now5 + 160){}
+  }
+  }
+if (!deviceConnected && oldDeviceConnected) {
+        unsigned long startTime = millis();
+        while (millis() - startTime < 500) {
+        } // give the bluetooth stack the chance to get things ready
+        pServer->startAdvertising(); // restart advertising
+        Serial.println("start advertising");
+        oldDeviceConnected = deviceConnected;
+    }
+    // connecting
+if (deviceConnected && !oldDeviceConnected) {
+        // do stuff here on connecting
+        oldDeviceConnected = deviceConnected;
+    }
+}
